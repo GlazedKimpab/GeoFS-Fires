@@ -1,183 +1,217 @@
 // ==UserScript==
 // @name         GeoFS Realistic Fires
 // @namespace    GeoFS-Realistic-Fires
-// @version      1.0
-// @description  Spawn animated fires and smoke anywhere in GeoFS
+// @version      1.1
+// @description  Spawn animated fires anywhere in GeoFS
 // @match        https://www.geo-fs.com/*
 // @match        https://geo-fs.com/*
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
 
-(() => {
+(function () {
     "use strict";
 
-    let fires = [];
+    let viewer = null;
     let placing = false;
+    let fires = [];
     let intensity = 3;
     let fireFrame = 0;
     let smokeFrame = 0;
 
-    // Wait for GeoFS
-    const waitForGeoFS = setInterval(() => {
-        if (window.geofs?.api?.viewer && window.Cesium) {
-            clearInterval(waitForGeoFS);
-            start();
+    // --------------------------------------------------
+    // WAIT FOR GEOFS
+    // --------------------------------------------------
+
+    const wait = setInterval(() => {
+        try {
+            if (
+                window.geofs &&
+                window.geofs.api &&
+                window.geofs.api.viewer &&
+                window.Cesium
+            ) {
+                viewer = window.geofs.api.viewer;
+                clearInterval(wait);
+                initialize();
+            }
+        } catch (e) {
+            console.log("Waiting for GeoFS...");
         }
     }, 500);
 
-    function start() {
-        createUI();
-        createFireImages();
-        setupMouse();
-        animate();
+    // --------------------------------------------------
+    // CREATE FIRE TEXTURES
+    // --------------------------------------------------
 
-        console.log("🔥 GeoFS Realistic Fires loaded!");
-    }
+    const fireImages = [];
+    const smokeImages = [];
 
-    let fireImages = [];
-    let smokeImages = [];
-
-    // Generate fire/smoke textures locally
-    function createFireImages() {
-        for (let frame = 0; frame < 12; frame++) {
-            fireImages.push(makeFire(frame));
-            smokeImages.push(makeSmoke(frame));
+    function createTextures() {
+        for (let i = 0; i < 12; i++) {
+            fireImages.push(createFire(i));
+            smokeImages.push(createSmoke(i));
         }
     }
 
-    function makeFire(frame) {
+    function createFire(frame) {
         const canvas = document.createElement("canvas");
         canvas.width = 256;
         canvas.height = 256;
 
         const ctx = canvas.getContext("2d");
 
-        const wobble = Math.sin(frame * 0.8) * 12;
+        const wobble = Math.sin(frame * 0.8) * 15;
 
         // Glow
         const glow = ctx.createRadialGradient(
-            128, 165, 5,
-            128, 165, 115
+            128, 170, 5,
+            128, 170, 115
         );
 
-        glow.addColorStop(0, "rgba(255,255,180,0.9)");
-        glow.addColorStop(0.25, "rgba(255,150,20,0.65)");
-        glow.addColorStop(0.6, "rgba(255,50,0,0.25)");
+        glow.addColorStop(0, "rgba(255,255,220,1)");
+        glow.addColorStop(0.2, "rgba(255,180,30,.9)");
+        glow.addColorStop(0.55, "rgba(255,50,0,.35)");
         glow.addColorStop(1, "rgba(255,0,0,0)");
 
         ctx.fillStyle = glow;
         ctx.fillRect(0, 0, 256, 256);
 
-        // Outer flame
+        // Flame
         ctx.beginPath();
+
         ctx.moveTo(128, 235);
+
         ctx.bezierCurveTo(
-            65, 215,
-            70, 150,
-            105 + wobble, 120
+            60,
+            210,
+            75 + wobble,
+            150,
+            105,
+            120
         );
 
         ctx.bezierCurveTo(
-            92, 90,
-            125, 65,
-            135, 25
+            90,
+            85,
+            125,
+            60,
+            135,
+            20
         );
 
         ctx.bezierCurveTo(
-            165, 80,
-            185, 105,
-            160, 140
+            165,
+            75,
+            185,
+            105,
+            160,
+            140
         );
 
         ctx.bezierCurveTo(
-            205, 180,
-            170, 220,
-            128, 235
+            205,
+            180,
+            175,
+            220,
+            128,
+            235
         );
 
         ctx.closePath();
 
-        const flame = ctx.createLinearGradient(0, 30, 0, 235);
-        flame.addColorStop(0, "#fff59d");
-        flame.addColorStop(0.3, "#ffb300");
-        flame.addColorStop(0.7, "#ff3d00");
-        flame.addColorStop(1, "#b71c00");
+        const flame = ctx.createLinearGradient(
+            0, 20, 0, 235
+        );
+
+        flame.addColorStop(0, "#fffbd0");
+        flame.addColorStop(.25, "#ffd000");
+        flame.addColorStop(.65, "#ff5a00");
+        flame.addColorStop(1, "#d50000");
 
         ctx.fillStyle = flame;
         ctx.fill();
 
         // Inner flame
         ctx.beginPath();
+
         ctx.moveTo(128, 220);
 
         ctx.bezierCurveTo(
-            95, 205,
-            105, 165,
-            120, 145
+            95,
+            205,
+            105,
+            170,
+            120,
+            145
         );
 
         ctx.bezierCurveTo(
-            112, 125,
-            130, 105,
-            135, 82
+            110,
+            120,
+            130,
+            100,
+            135,
+            75
         );
 
         ctx.bezierCurveTo(
-            155, 125,
-            160, 145,
-            148, 165
+            155,
+            120,
+            160,
+            145,
+            148,
+            165
         );
 
         ctx.bezierCurveTo(
-            170, 190,
-            150, 210,
-            128, 220
+            170,
+            190,
+            150,
+            210,
+            128,
+            220
         );
 
         ctx.closePath();
 
-        const inner = ctx.createLinearGradient(0, 80, 0, 220);
-        inner.addColorStop(0, "#ffffff");
-        inner.addColorStop(0.4, "#fff176");
-        inner.addColorStop(1, "#ff9800");
-
-        ctx.fillStyle = inner;
+        ctx.fillStyle = "#fff176";
         ctx.fill();
 
-        return canvas.toDataURL();
+        return canvas.toDataURL("image/png");
     }
 
-    function makeSmoke(frame) {
+    function createSmoke(frame) {
         const canvas = document.createElement("canvas");
+
         canvas.width = 256;
         canvas.height = 256;
 
         const ctx = canvas.getContext("2d");
 
-        const drift = Math.sin(frame * 0.5) * 25;
+        const drift = Math.sin(frame * .5) * 25;
 
         const clouds = [
             [128, 210, 40],
-            [110 + drift * 0.3, 165, 38],
-            [145 + drift * 0.6, 120, 34],
+            [110 + drift * .3, 165, 38],
+            [145 + drift * .6, 120, 35],
             [115 + drift, 75, 30]
         ];
 
-        for (const [x, y, r] of clouds) {
+        clouds.forEach(([x, y, r]) => {
             const gradient = ctx.createRadialGradient(
-                x, y, 3,
+                x, y, 2,
                 x, y, r
             );
 
             gradient.addColorStop(
                 0,
-                "rgba(40,40,40,0.65)"
+                "rgba(35,35,35,.65)"
             );
 
             gradient.addColorStop(
-                0.6,
-                "rgba(60,60,60,0.25)"
+                .6,
+                "rgba(60,60,60,.3)"
             );
 
             gradient.addColorStop(
@@ -190,27 +224,19 @@
             ctx.beginPath();
             ctx.arc(x, y, r, 0, Math.PI * 2);
             ctx.fill();
-        }
+        });
 
-        return canvas.toDataURL();
+        return canvas.toDataURL("image/png");
     }
+
+    // --------------------------------------------------
+    // UI
+    // --------------------------------------------------
 
     function createUI() {
         const panel = document.createElement("div");
 
-        panel.style.cssText = `
-            position:fixed;
-            right:15px;
-            top:100px;
-            width:230px;
-            padding:12px;
-            background:rgba(15,15,15,.92);
-            color:white;
-            z-index:999999;
-            border-radius:10px;
-            font-family:Arial;
-            box-shadow:0 5px 25px rgba(0,0,0,.5);
-        `;
+        panel.id = "geofs-fire-panel";
 
         panel.innerHTML = `
             <div style="
@@ -221,182 +247,242 @@
                 🔥 Realistic Fires
             </div>
 
-            <button id="firePlace" style="width:100%;padding:8px;">
+            <button id="fire-place">
                 🔥 Place Fire
             </button>
 
-            <br><br>
-
-            <label>
+            <div style="margin-top:10px;">
                 Intensity:
-                <span id="fireIntensity">3</span>
-            </label>
+                <b id="fire-value">3</b>
+            </div>
 
             <input
-                id="fireSlider"
+                id="fire-slider"
                 type="range"
                 min="1"
                 max="5"
                 value="3"
-                style="width:100%;"
             >
 
-            <br>
-
-            <button id="fireRemove" style="width:100%;padding:7px;">
+            <button id="fire-remove">
                 Remove Last
             </button>
 
-            <br><br>
-
-            <button id="fireClear" style="width:100%;padding:7px;">
-                Clear All Fires
+            <button id="fire-clear">
+                Clear All
             </button>
 
-            <div id="fireStatus" style="
-                margin-top:8px;
-                color:#ffad5c;
-            ">
+            <div id="fire-status">
                 Ready
             </div>
         `;
 
+        panel.style.cssText = `
+            position:fixed;
+            right:15px;
+            top:100px;
+            width:220px;
+            padding:14px;
+            z-index:999999;
+            background:rgba(15,15,15,.95);
+            color:white;
+            border:1px solid #ff6a00;
+            border-radius:10px;
+            font-family:Arial,sans-serif;
+            box-shadow:0 5px 30px rgba(0,0,0,.6);
+        `;
+
+        const style = document.createElement("style");
+
+        style.textContent = `
+            #geofs-fire-panel button {
+                width:100%;
+                margin-top:7px;
+                padding:8px;
+                border:0;
+                border-radius:6px;
+                background:#333;
+                color:white;
+                cursor:pointer;
+            }
+
+            #geofs-fire-panel button:hover {
+                background:#ff5a00;
+            }
+
+            #fire-slider {
+                width:100%;
+            }
+
+            #fire-status {
+                margin-top:10px;
+                color:#ffb060;
+            }
+        `;
+
+        document.head.appendChild(style);
         document.body.appendChild(panel);
 
-        document.getElementById("firePlace").onclick = () => {
+        document.getElementById("fire-place").onclick = () => {
             placing = !placing;
 
-            document.getElementById("fireStatus").textContent =
+            document.getElementById("fire-place").textContent =
                 placing
-                    ? "Click anywhere on the map!"
-                    : "Placement cancelled";
-
-            document.getElementById("firePlace").textContent =
-                placing
-                    ? "❌ Cancel"
+                    ? "❌ Click map to cancel"
                     : "🔥 Place Fire";
+
+            document.getElementById("fire-status").textContent =
+                placing
+                    ? "Click somewhere on the globe..."
+                    : "Ready";
         };
 
-        document.getElementById("fireSlider").oninput = e => {
+        document.getElementById("fire-slider").oninput = e => {
             intensity = Number(e.target.value);
 
-            document.getElementById(
-                "fireIntensity"
-            ).textContent = intensity;
+            document.getElementById("fire-value")
+                .textContent = intensity;
         };
 
-        document.getElementById("fireRemove").onclick =
+        document.getElementById("fire-remove").onclick =
             removeLast;
 
-        document.getElementById("fireClear").onclick =
-            clearFires;
+        document.getElementById("fire-clear").onclick =
+            clearAll;
     }
 
-    function setupMouse() {
-        const viewer = geofs.api.viewer;
+    // --------------------------------------------------
+    // GET WORLD POSITION
+    // --------------------------------------------------
 
+    function getWorldPosition(screenPosition) {
+        const scene = viewer.scene;
+
+        // First try depth picking
+        if (scene.pickPositionSupported) {
+            const picked = scene.pickPosition(screenPosition);
+
+            if (picked) {
+                return picked;
+            }
+        }
+
+        // Reliable globe ray intersection
+        const ray =
+            viewer.camera.getPickRay(screenPosition);
+
+        if (!ray) return null;
+
+        return scene.globe.pick(
+            ray,
+            scene
+        );
+    }
+
+    // --------------------------------------------------
+    // MOUSE CLICK
+    // --------------------------------------------------
+
+    function setupMouse() {
         const handler =
             new Cesium.ScreenSpaceEventHandler(
                 viewer.scene.canvas
             );
 
-        handler.setInputAction(movement => {
+        handler.setInputAction(function (click) {
+
             if (!placing) return;
 
-            let position = null;
-
-            if (viewer.scene.pickPositionSupported) {
-                position =
-                    viewer.scene.pickPosition(
-                        movement.position
-                    );
-            }
+            const position =
+                getWorldPosition(click.position);
 
             if (!position) {
-                position =
-                    viewer.camera.pickEllipsoid(
-                        movement.position,
-                        viewer.scene.globe.ellipsoid
-                    );
+                document.getElementById(
+                    "fire-status"
+                ).textContent =
+                    "Couldn't find terrain.";
+                return;
             }
-
-            if (!position) return;
 
             spawnFire(position);
 
             placing = false;
 
             document.getElementById(
-                "firePlace"
-            ).textContent = "🔥 Place Fire";
+                "fire-place"
+            ).textContent =
+                "🔥 Place Fire";
+
         }, Cesium.ScreenSpaceEventType.LEFT_CLICK);
     }
 
+    // --------------------------------------------------
+    // SPAWN FIRE
+    // --------------------------------------------------
+
     function spawnFire(position) {
-        const viewer = geofs.api.viewer;
 
         const cart =
-            Cesium.Cartographic.fromCartesian(position);
-
-        const baseHeight = cart.height || 0;
+            Cesium.Cartographic.fromCartesian(
+                position
+            );
 
         const fire = {
             entities: [],
-            intensity: intensity
+            intensity: intensity,
+            flameCount: 2 + intensity
         };
 
-        // Fire flames
-        const flameCount = 2 + intensity;
+        // Flames
+        for (
+            let i = 0;
+            i < fire.flameCount;
+            i++
+        ) {
 
-        for (let i = 0; i < flameCount; i++) {
-            const lon =
-                cart.longitude +
-                (Math.random() - 0.5) *
+            const offsetLon =
+                (Math.random() - .5) *
                 0.00015;
 
-            const lat =
-                cart.latitude +
-                (Math.random() - 0.5) *
+            const offsetLat =
+                (Math.random() - .5) *
                 0.00015;
 
             const height =
-                baseHeight +
-                Math.random() *
-                (2 + intensity);
+                (cart.height || 0) +
+                Math.random() * intensity * 2;
 
-            const pos =
+            const firePosition =
                 Cesium.Cartesian3.fromRadians(
-                    lon,
-                    lat,
+                    cart.longitude + offsetLon,
+                    cart.latitude + offsetLat,
                     height
                 );
 
             const entity =
                 viewer.entities.add({
-                    position: pos,
+
+                    position: firePosition,
 
                     billboard: {
+
                         image:
-                            fireImages[
-                                Math.floor(
-                                    Math.random() *
-                                    fireImages.length
-                                )
-                            ],
+                            fireImages[i %
+                                fireImages.length],
 
                         width:
-                            45 +
-                            intensity * 12,
+                            55 + intensity * 12,
 
                         height:
-                            55 +
-                            intensity * 15,
+                            70 + intensity * 14,
 
                         verticalOrigin:
                             Cesium.VerticalOrigin.BOTTOM,
 
                         disableDepthTestDistance:
-                            Number.POSITIVE_INFINITY
+                            Number.POSITIVE_INFINITY,
+
+                        show: true
                     }
                 });
 
@@ -404,48 +490,34 @@
         }
 
         // Smoke
-        const smokeCount =
-            2 + Math.ceil(intensity / 2);
+        for (
+            let i = 0;
+            i < 3;
+            i++
+        ) {
 
-        for (let i = 0; i < smokeCount; i++) {
-            const height =
-                baseHeight +
-                8 +
-                i * (7 + intensity);
-
-            const lon =
-                cart.longitude +
-                (Math.random() - 0.5) *
-                0.0001;
-
-            const lat =
-                cart.latitude +
-                (Math.random() - 0.5) *
-                0.0001;
-
-            const pos =
+            const smokePosition =
                 Cesium.Cartesian3.fromRadians(
-                    lon,
-                    lat,
-                    height
+                    cart.longitude,
+                    cart.latitude,
+                    (cart.height || 0) +
+                    8 +
+                    i * 10
                 );
 
             const entity =
                 viewer.entities.add({
-                    position: pos,
+
+                    position: smokePosition,
 
                     billboard: {
+
                         image:
                             smokeImages[i %
                                 smokeImages.length],
 
-                        width:
-                            55 +
-                            i * 12,
-
-                        height:
-                            55 +
-                            i * 12,
+                        width: 65 + i * 15,
+                        height: 65 + i * 15,
 
                         verticalOrigin:
                             Cesium.VerticalOrigin.CENTER,
@@ -453,9 +525,11 @@
                         disableDepthTestDistance:
                             Number.POSITIVE_INFINITY,
 
+                        show: true,
+
                         color:
                             Cesium.Color.WHITE
-                                .withAlpha(0.65)
+                                .withAlpha(.7)
                     }
                 });
 
@@ -465,23 +539,28 @@
         // Ground glow
         const glow =
             viewer.entities.add({
+
                 position:
                     Cesium.Cartesian3.fromRadians(
                         cart.longitude,
                         cart.latitude,
-                        baseHeight + 0.1
+                        (cart.height || 0) + .2
                     ),
 
                 ellipse: {
+
                     semiMajorAxis:
-                        4 + intensity * 2,
+                        5 + intensity * 2,
 
                     semiMinorAxis:
-                        4 + intensity * 2,
+                        5 + intensity * 2,
 
                     material:
                         Cesium.Color.ORANGE
-                            .withAlpha(0.18)
+                            .withAlpha(.25),
+
+                    height:
+                        (cart.height || 0) + .2
                 }
             });
 
@@ -490,15 +569,18 @@
         fires.push(fire);
 
         document.getElementById(
-            "fireStatus"
+            "fire-status"
         ).textContent =
             `🔥 ${fires.length} fire(s) active`;
     }
 
-    function removeLast() {
-        if (!fires.length) return;
+    // --------------------------------------------------
+    // REMOVE
+    // --------------------------------------------------
 
-        const viewer = geofs.api.viewer;
+    function removeLast() {
+
+        if (!fires.length) return;
 
         const fire = fires.pop();
 
@@ -506,14 +588,10 @@
             viewer.entities.remove(entity);
         });
 
-        document.getElementById(
-            "fireStatus"
-        ).textContent =
-            `🔥 ${fires.length} fire(s) active`;
+        updateStatus();
     }
 
-    function clearFires() {
-        const viewer = geofs.api.viewer;
+    function clearAll() {
 
         fires.forEach(fire => {
             fire.entities.forEach(entity => {
@@ -523,15 +601,24 @@
 
         fires = [];
 
-        document.getElementById(
-            "fireStatus"
-        ).textContent =
-            "All fires cleared";
+        updateStatus();
     }
 
-    // Animate the fire and smoke
+    function updateStatus() {
+        document.getElementById(
+            "fire-status"
+        ).textContent =
+            `🔥 ${fires.length} fire(s) active`;
+    }
+
+    // --------------------------------------------------
+    // ANIMATION
+    // --------------------------------------------------
+
     function animate() {
+
         setInterval(() => {
+
             fireFrame =
                 (fireFrame + 1) %
                 fireImages.length;
@@ -541,29 +628,35 @@
                 smokeImages.length;
 
             fires.forEach(fire => {
-                const flameCount =
-                    2 + fire.intensity;
 
                 let flameIndex = 0;
                 let smokeIndex = 0;
 
                 fire.entities.forEach(entity => {
-                    if (!entity.billboard) return;
 
-                    if (flameIndex < flameCount) {
+                    if (!entity.billboard)
+                        return;
+
+                    if (
+                        flameIndex <
+                        fire.flameCount
+                    ) {
+
                         entity.billboard.image =
                             fireImages[
                                 (fireFrame +
-                                    flameIndex) %
+                                flameIndex) %
                                 fireImages.length
                             ];
 
                         flameIndex++;
+
                     } else {
+
                         entity.billboard.image =
                             smokeImages[
                                 (smokeFrame +
-                                    smokeIndex) %
+                                smokeIndex) %
                                 smokeImages.length
                             ];
 
@@ -571,6 +664,28 @@
                     }
                 });
             });
+
         }, 100);
     }
+
+    // --------------------------------------------------
+    // START
+    // --------------------------------------------------
+
+    function initialize() {
+
+        console.log(
+            "🔥 GeoFS Realistic Fires starting..."
+        );
+
+        createTextures();
+        createUI();
+        setupMouse();
+        animate();
+
+        console.log(
+            "🔥 GeoFS Realistic Fires ready!"
+        );
+    }
+
 })();
