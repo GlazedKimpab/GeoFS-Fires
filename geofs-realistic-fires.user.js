@@ -1,11 +1,11 @@
 // ==UserScript==
-// @name         GeoFS Fire Spawner
-// @namespace    GeoFS-Fire-Spawner
-// @version      2.0
-// @description  Spawn fires anywhere in GeoFS
-// @match        https://www.geo-fs.com/*
-// @match        https://geo-fs.com/*
-// @match        https://*.geo-fs.com/*
+// @name         GeoFS Fire Gizmo
+// @namespace    GeoFS-Fire-Gizmo
+// @version      3.0
+// @description  Place and position fires in GeoFS with XYZ controls
+// @match        https://geo-fs.com/geofs.php*
+// @match        https://www.geo-fs.com/geofs.php*
+// @match        https://*.geo-fs.com/geofs.php*
 // @grant        none
 // @run-at       document-idle
 // ==/UserScript==
@@ -13,56 +13,71 @@
 (function () {
     "use strict";
 
-    let fireObjects = [];
-    let placing = false;
-    let intensity = 3;
+    console.log("[FireGizmo] Starting...");
 
-    // Wait until GeoFS is ready
-    const wait = setInterval(() => {
+    let fire = null;
+    let firePosition = null;
+
+    let imageURL = null;
+
+    let x = 0; // longitude movement
+    let y = 0; // latitude movement
+    let z = 0; // altitude movement
+
+    let size = 3;
+
+    // ---------------------------------------------------------
+    // WAIT FOR GEOFS
+    // ---------------------------------------------------------
+
+    function waitForGeoFS() {
 
         if (
             window.geofs &&
-            window.geofs.api &&
-            window.geofs.api.viewer &&
-            window.geofs.api.billboard
+            geofs.api &&
+            geofs.api.billboard &&
+            geofs.api.getCameraLla
         ) {
 
-            clearInterval(wait);
-            start();
+            console.log("[FireGizmo] GeoFS ready!");
+            initialize();
+
+        } else {
+
+            setTimeout(
+                waitForGeoFS,
+                500
+            );
 
         }
-
-    }, 500);
-
-
-    function start() {
-
-        console.log("[Fire] GeoFS detected!");
-
-        createMenu();
-        createClickHandler();
-
     }
 
-
-    // =====================================================
+    // ---------------------------------------------------------
     // FIRE IMAGE
-    // =====================================================
+    // ---------------------------------------------------------
 
-    function makeFireImage() {
+    function createFireImage() {
 
-        const canvas = document.createElement("canvas");
+        const canvas =
+            document.createElement("canvas");
 
         canvas.width = 256;
         canvas.height = 256;
 
-        const ctx = canvas.getContext("2d");
+        const ctx =
+            canvas.getContext("2d");
 
         // Glow
-        const glow = ctx.createRadialGradient(
-            128, 165, 5,
-            128, 165, 115
-        );
+
+        const glow =
+            ctx.createRadialGradient(
+                128,
+                180,
+                5,
+                128,
+                180,
+                120
+            );
 
         glow.addColorStop(
             0,
@@ -70,8 +85,8 @@
         );
 
         glow.addColorStop(
-            0.2,
-            "rgba(255,180,20,.9)"
+            0.18,
+            "rgba(255,200,40,.95)"
         );
 
         glow.addColorStop(
@@ -93,97 +108,122 @@
             256
         );
 
+        // Outer flame
 
-        // Main flame
         ctx.beginPath();
 
-        ctx.moveTo(128,235);
+        ctx.moveTo(128, 240);
 
         ctx.bezierCurveTo(
-            60,210,
-            75,155,
-            105,120
+            55,
+            215,
+            70,
+            155,
+            105,
+            120
         );
 
         ctx.bezierCurveTo(
-            90,90,
-            120,60,
-            135,20
+            90,
+            85,
+            120,
+            60,
+            135,
+            20
         );
 
         ctx.bezierCurveTo(
-            165,75,
-            185,110,
-            160,145
+            165,
+            75,
+            190,
+            110,
+            160,
+            145
         );
 
         ctx.bezierCurveTo(
-            200,180,
-            175,220,
-            128,235
+            205,
+            185,
+            175,
+            225,
+            128,
+            240
         );
 
         ctx.closePath();
 
-
         const flame =
             ctx.createLinearGradient(
-                0,20,
-                0,235
+                0,
+                20,
+                0,
+                240
             );
 
         flame.addColorStop(
             0,
-            "#fffbd0"
+            "#fffde0"
         );
 
         flame.addColorStop(
-            .3,
+            0.25,
             "#ffd000"
         );
 
         flame.addColorStop(
-            .7,
-            "#ff5500"
+            0.65,
+            "#ff5700"
         );
 
         flame.addColorStop(
             1,
-            "#c90000"
+            "#c40000"
         );
 
         ctx.fillStyle = flame;
 
         ctx.fill();
 
-
         // Inner flame
+
         ctx.beginPath();
 
-        ctx.moveTo(128,220);
+        ctx.moveTo(128, 225);
 
         ctx.bezierCurveTo(
-            95,205,
-            105,170,
-            120,145
+            95,
+            205,
+            105,
+            170,
+            120,
+            145
         );
 
         ctx.bezierCurveTo(
-            112,125,
-            130,100,
-            135,75
+            112,
+            125,
+            130,
+            100,
+            136,
+            75
         );
 
         ctx.bezierCurveTo(
-            155,120,
-            160,145,
-            148,165
+            155,
+            120,
+            160,
+            145,
+            148,
+            165
         );
 
         ctx.bezierCurveTo(
-            170,190,
-            150,210,
-            128,220
+            170,
+            190,
+            150,
+            215,
+            128,
+            225
         );
 
         ctx.closePath();
@@ -193,18 +233,16 @@
 
         ctx.fill();
 
-
         return canvas.toDataURL(
             "image/png"
         );
     }
 
+    // ---------------------------------------------------------
+    // SMOKE
+    // ---------------------------------------------------------
 
-    // =====================================================
-    // SMOKE IMAGE
-    // =====================================================
-
-    function makeSmokeImage() {
+    function createSmokeImage() {
 
         const canvas =
             document.createElement("canvas");
@@ -215,16 +253,14 @@
         const ctx =
             canvas.getContext("2d");
 
-
         const clouds = [
-            [128,210,40],
-            [110,165,38],
-            [145,120,35],
-            [115,75,30]
+            [128, 215, 42],
+            [105, 165, 38],
+            [150, 120, 35],
+            [115, 75, 30]
         ];
 
-
-        clouds.forEach(c => {
+        for (const c of clouds) {
 
             const gradient =
                 ctx.createRadialGradient(
@@ -238,11 +274,11 @@
 
             gradient.addColorStop(
                 0,
-                "rgba(30,30,30,.65)"
+                "rgba(35,35,35,.65)"
             );
 
             gradient.addColorStop(
-                .6,
+                .55,
                 "rgba(60,60,60,.3)"
             );
 
@@ -250,7 +286,6 @@
                 1,
                 "rgba(0,0,0,0)"
             );
-
 
             ctx.fillStyle =
                 gradient;
@@ -266,452 +301,561 @@
             );
 
             ctx.fill();
-
-        });
-
+        }
 
         return canvas.toDataURL(
             "image/png"
         );
     }
 
+    // ---------------------------------------------------------
+    // CREATE FIRE
+    // ---------------------------------------------------------
 
-    const FIRE_IMAGE =
-        makeFireImage();
+    function spawnFire() {
 
-    const SMOKE_IMAGE =
-        makeSmokeImage();
+        removeFire();
 
+        const camera =
+            geofs.api.getCameraLla();
 
-    // =====================================================
-    // MENU
-    // =====================================================
+        if (!camera) {
 
-    function createMenu() {
-
-        const menu =
-            document.createElement("div");
-
-        menu.id =
-            "geofs-fire-menu";
-
-
-        menu.innerHTML = `
-
-            <div style="
-                font-size:18px;
-                font-weight:bold;
-                margin-bottom:10px;
-            ">
-                🔥 FIRE SPAWNER
-            </div>
-
-            <button id="fire-place">
-                🔥 PLACE FIRE
-            </button>
-
-            <br><br>
-
-            <label>
-                Fire size:
-                <b id="fire-size">3</b>
-            </label>
-
-            <input
-                id="fire-slider"
-                type="range"
-                min="1"
-                max="5"
-                value="3"
-                style="width:100%;"
-            >
-
-            <button id="fire-delete">
-                🗑️ DELETE LAST
-            </button>
-
-            <button id="fire-clear">
-                🧹 DELETE ALL
-            </button>
-
-            <div
-                id="fire-status"
-                style="
-                    margin-top:10px;
-                    color:#ff9d4d;
-                "
-            >
-                Ready
-            </div>
-        `;
-
-
-        menu.style.cssText = `
-            position:fixed;
-            right:20px;
-            top:120px;
-            width:220px;
-            padding:15px;
-            z-index:999999;
-            background:rgba(10,10,10,.95);
-            color:white;
-            border:2px solid #ff5a00;
-            border-radius:10px;
-            font-family:Arial;
-            box-shadow:0 5px 30px rgba(0,0,0,.6);
-        `;
-
-
-        document.body.appendChild(menu);
-
-
-        document.getElementById(
-            "fire-place"
-        ).onclick = () => {
-
-            placing = !placing;
-
-            document.getElementById(
-                "fire-status"
-            ).textContent =
-                placing
-                ? "CLICK THE GROUND"
-                : "Ready";
-
-        };
-
-
-        document.getElementById(
-            "fire-slider"
-        ).oninput = e => {
-
-            intensity =
-                Number(e.target.value);
-
-            document.getElementById(
-                "fire-size"
-            ).textContent =
-                intensity;
-
-        };
-
-
-        document.getElementById(
-            "fire-delete"
-        ).onclick =
-            deleteLast;
-
-
-        document.getElementById(
-            "fire-clear"
-        ).onclick =
-            deleteAll;
-
-    }
-
-
-    // =====================================================
-    // CLICK HANDLER
-    // =====================================================
-
-    function createClickHandler() {
-
-        const canvas =
-            geofs.api.viewer.scene.canvas;
-
-
-        const handler =
-            new Cesium.ScreenSpaceEventHandler(
-                canvas
+            setStatus(
+                "Could not get camera position"
             );
 
+            return;
+        }
 
-        handler.setInputAction(
-            function (click) {
+        /*
+         * GeoFS LLA format:
+         *
+         * [latitude, longitude, altitude]
+         */
 
-                if (!placing)
-                    return;
+        firePosition = [
+            camera[0],
+            camera[1],
+            camera[2]
+        ];
 
+        updatePosition();
 
-                const scene =
-                    geofs.api.viewer.scene;
-
-
-                const ray =
-                    geofs.api.viewer.camera
-                        .getPickRay(
-                            click.position
-                        );
-
-
-                if (!ray) {
-
-                    setStatus(
-                        "Couldn't find location"
-                    );
-
-                    return;
-                }
-
-
-                const position =
-                    scene.globe.pick(
-                        ray,
-                        scene
-                    );
-
-
-                if (!position) {
-
-                    setStatus(
-                        "Click on the globe"
-                    );
-
-                    return;
-                }
-
-
-                const cart =
-                    Cesium.Cartographic
-                        .fromCartesian(
-                            position
-                        );
-
-
-                const lat =
-                    Cesium.Math
-                        .toDegrees(
-                            cart.latitude
-                        );
-
-
-                const lon =
-                    Cesium.Math
-                        .toDegrees(
-                            cart.longitude
-                        );
-
-
-                spawnFire(
-                    lat,
-                    lon,
-                    cart.height || 0
-                );
-
-
-                placing = false;
-
-                setStatus(
-                    "🔥 FIRE SPAWNED!"
-                );
-
-            },
-            Cesium.ScreenSpaceEventType
-                .LEFT_CLICK
+        setStatus(
+            "🔥 Fire created!"
         );
-
     }
 
+    // ---------------------------------------------------------
+    // UPDATE FIRE
+    // ---------------------------------------------------------
 
-    // =====================================================
-    // SPAWN FIRE
-    // =====================================================
+    function updatePosition() {
 
-    function spawnFire(
-        lat,
-        lon,
-        altitude
-    ) {
+        if (!firePosition)
+            return;
 
-        const objects = [];
+        const lat =
+            firePosition[0] + y / 111000;
 
+        const lon =
+            firePosition[1] +
+            x /
+            (
+                111000 *
+                Math.cos(
+                    firePosition[0] *
+                    Math.PI /
+                    180
+                )
+            );
 
-        // Multiple flames
-        for (
-            let i = 0;
-            i < intensity + 1;
-            i++
-        ) {
+        const alt =
+            firePosition[2] + z;
 
-            const offsetLat =
-                (Math.random() - .5)
-                * .00008;
+        const location = [
+            lat,
+            lon,
+            alt
+        ];
 
-            const offsetLon =
-                (Math.random() - .5)
-                * .00008;
+        // Create billboard if necessary
 
+        if (!fire) {
 
-            const billboard =
+            fire =
                 new geofs.api.billboard(
-
-                    [
-                        lat + offsetLat,
-                        lon + offsetLon,
-                        altitude + 1
-                    ],
-
-                    FIRE_IMAGE,
-
+                    location,
+                    imageURL,
                     {
                         collection:
                             "translucent",
 
                         scale:
                             0.7 +
-                            intensity * .25,
+                            size * 0.3,
 
-                        opacity:1,
+                        opacity: 1,
 
                         geofsFixCameraRotation:
                             true
                     }
                 );
 
+        } else {
 
-            objects.push(
-                billboard
+            fire.setLocation(
+                location
+            );
+
+            fire.setScale(
+                0.7 +
+                size * 0.3
             );
 
         }
+    }
 
+    // ---------------------------------------------------------
+    // DELETE FIRE
+    // ---------------------------------------------------------
 
-        // Smoke
-        for (
-            let i = 0;
-            i < intensity;
-            i++
-        ) {
+    function removeFire() {
 
-            const smoke =
-                new geofs.api.billboard(
+        if (fire) {
 
-                    [
-                        lat,
-                        lon,
-                        altitude +
-                        8 +
-                        i * 8
-                    ],
-
-                    SMOKE_IMAGE,
-
-                    {
-                        collection:
-                            "translucent",
-
-                        scale:
-                            0.8 +
-                            i * .15,
-
-                        opacity:
-                            0.65,
-
-                        geofsFixCameraRotation:
-                            true
-                    }
-                );
-
-
-            objects.push(smoke);
+            try {
+                fire.destroy();
+            } catch (e) {}
 
         }
 
-
-        fireObjects.push(
-            objects
-        );
-
-
-        setStatus(
-            "🔥 Fire spawned! Total: " +
-            fireObjects.length
-        );
-
-
-        console.log(
-            "[Fire] Spawned at:",
-            lat,
-            lon,
-            altitude
-        );
-
+        fire = null;
     }
 
+    // ---------------------------------------------------------
+    // UI
+    // ---------------------------------------------------------
 
-    // =====================================================
-    // DELETE
-    // =====================================================
+    function createUI() {
 
-    function deleteLast() {
+        const panel =
+            document.createElement("div");
 
-        if (!fireObjects.length)
-            return;
+        panel.id =
+            "fire-gizmo";
 
+        panel.innerHTML = `
 
-        const objects =
-            fireObjects.pop();
+            <div class="fg-title">
+                🔥 FIRE GIZMO
+            </div>
 
+            <button id="fg-create">
+                🔥 CREATE FIRE
+            </button>
 
-        objects.forEach(
-            object => {
+            <div class="fg-section">
+                <b>POSITION</b>
+            </div>
 
-                try {
-                    object.destroy();
-                } catch {}
+            <label>
+                X — Left / Right
+                <span id="fg-x-value">0</span> m
+            </label>
+
+            <input
+                id="fg-x"
+                type="range"
+                min="-500"
+                max="500"
+                value="0"
+                step="1"
+            >
+
+            <label>
+                Y — Forward / Back
+                <span id="fg-y-value">0</span> m
+            </label>
+
+            <input
+                id="fg-y"
+                type="range"
+                min="-500"
+                max="500"
+                value="0"
+                step="1"
+            >
+
+            <label>
+                Z — Up / Down
+                <span id="fg-z-value">0</span> m
+            </label>
+
+            <input
+                id="fg-z"
+                type="range"
+                min="-100"
+                max="500"
+                value="0"
+                step="1"
+            >
+
+            <div class="fg-section">
+                <b>SIZE</b>
+            </div>
+
+            <input
+                id="fg-size"
+                type="range"
+                min="1"
+                max="8"
+                value="3"
+                step="1"
+            >
+
+            <div class="fg-buttons">
+
+                <button id="fg-reset">
+                    ↩ RESET
+                </button>
+
+                <button id="fg-delete">
+                    🗑 DELETE
+                </button>
+
+            </div>
+
+            <div id="fg-status">
+                Ready
+            </div>
+
+        `;
+
+        const style =
+            document.createElement("style");
+
+        style.textContent = `
+
+            #fire-gizmo {
+
+                position:fixed;
+
+                right:20px;
+
+                top:120px;
+
+                width:245px;
+
+                padding:14px;
+
+                background:
+                    rgba(12,12,15,.96);
+
+                color:white;
+
+                z-index:999999;
+
+                border:
+                    2px solid #ff5a00;
+
+                border-radius:12px;
+
+                font-family:
+                    Arial,sans-serif;
+
+                box-shadow:
+                    0 8px 35px
+                    rgba(0,0,0,.65);
 
             }
+
+            .fg-title {
+
+                font-size:20px;
+
+                font-weight:bold;
+
+                color:#ff8a3d;
+
+                margin-bottom:12px;
+
+            }
+
+            .fg-section {
+
+                margin-top:13px;
+
+                margin-bottom:5px;
+
+                color:#ff9a55;
+
+            }
+
+            #fire-gizmo label {
+
+                display:block;
+
+                margin-top:8px;
+
+                margin-bottom:3px;
+
+            }
+
+            #fire-gizmo label span {
+
+                float:right;
+
+                color:#ff9a55;
+
+            }
+
+            #fire-gizmo input {
+
+                width:100%;
+
+            }
+
+            #fire-gizmo button {
+
+                width:100%;
+
+                padding:9px;
+
+                margin-top:6px;
+
+                border:0;
+
+                border-radius:6px;
+
+                background:#333;
+
+                color:white;
+
+                font-weight:bold;
+
+                cursor:pointer;
+
+            }
+
+            #fire-gizmo button:hover {
+
+                background:#ff5a00;
+
+            }
+
+            .fg-buttons {
+
+                display:flex;
+
+                gap:6px;
+
+            }
+
+            .fg-buttons button {
+
+                width:50%;
+
+            }
+
+            #fg-status {
+
+                margin-top:10px;
+
+                color:#ffad70;
+
+                min-height:18px;
+
+            }
+
+        `;
+
+        document.head.appendChild(
+            style
+        );
+
+        document.body.appendChild(
+            panel
         );
 
 
-        setStatus(
-            "Removed last fire"
-        );
+        // Create
 
-    }
+        document.getElementById(
+            "fg-create"
+        ).onclick =
+            spawnFire;
 
 
-    function deleteAll() {
+        // X
 
-        fireObjects.forEach(
-            objects => {
+        document.getElementById(
+            "fg-x"
+        ).oninput = function () {
 
-                objects.forEach(
-                    object => {
+            x = Number(this.value);
 
-                        try {
-                            object.destroy();
-                        } catch {}
+            document.getElementById(
+                "fg-x-value"
+            ).textContent = x;
 
-                    }
+            updatePosition();
+
+        };
+
+
+        // Y
+
+        document.getElementById(
+            "fg-y"
+        ).oninput = function () {
+
+            y = Number(this.value);
+
+            document.getElementById(
+                "fg-y-value"
+            ).textContent = y;
+
+            updatePosition();
+
+        };
+
+
+        // Z
+
+        document.getElementById(
+            "fg-z"
+        ).oninput = function () {
+
+            z = Number(this.value);
+
+            document.getElementById(
+                "fg-z-value"
+            ).textContent = z;
+
+            updatePosition();
+
+        };
+
+
+        // Size
+
+        document.getElementById(
+            "fg-size"
+        ).oninput = function () {
+
+            size =
+                Number(this.value);
+
+            if (fire) {
+
+                fire.setScale(
+                    0.7 +
+                    size * 0.3
                 );
 
             }
-        );
+
+        };
 
 
-        fireObjects = [];
+        // Reset
+
+        document.getElementById(
+            "fg-reset"
+        ).onclick = function () {
+
+            x = 0;
+            y = 0;
+            z = 0;
+
+            document.getElementById(
+                "fg-x"
+            ).value = 0;
+
+            document.getElementById(
+                "fg-y"
+            ).value = 0;
+
+            document.getElementById(
+                "fg-z"
+            ).value = 0;
+
+            document.getElementById(
+                "fg-x-value"
+            ).textContent = 0;
+
+            document.getElementById(
+                "fg-y-value"
+            ).textContent = 0;
+
+            document.getElementById(
+                "fg-z-value"
+            ).textContent = 0;
+
+            updatePosition();
+
+        };
 
 
-        setStatus(
-            "All fires removed"
-        );
+        // Delete
+
+        document.getElementById(
+            "fg-delete"
+        ).onclick =
+            function () {
+
+                removeFire();
+
+                setStatus(
+                    "Fire deleted"
+                );
+
+            };
 
     }
 
+    // ---------------------------------------------------------
+    // STATUS
+    // ---------------------------------------------------------
 
     function setStatus(text) {
 
         const element =
             document.getElementById(
-                "fire-status"
+                "fg-status"
             );
-
 
         if (element)
             element.textContent =
                 text;
 
     }
+
+    // ---------------------------------------------------------
+    // START
+    // ---------------------------------------------------------
+
+    function initialize() {
+
+        imageURL =
+            createFireImage();
+
+        createSmokeImage();
+
+        createUI();
+
+        setStatus(
+            "Ready — click CREATE FIRE"
+        );
+
+        console.log(
+            "[FireGizmo] Ready!"
+        );
+
+    }
+
+    waitForGeoFS();
 
 })();
