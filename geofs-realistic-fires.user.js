@@ -1,32 +1,38 @@
-// ==UserScript==
-// @name         GeoFS Fire Gizmo
-// @namespace    GeoFS-Fire-Gizmo
-// @version      4.0
-// @description  Fire spawner with XYZ movement controls
-// @match        https://www.geo-fs.com/*
-// @match        https://geo-fs.com/*
-// @grant        none
-// @run-at       document-idle
-// ==/UserScript==
+// ============================================================
+// GEOFS - PROCEDURAL REALISTIC FIRE
+// H = hide/show controls
+// ============================================================
 
 (function () {
+
     "use strict";
 
-    let fire = null;
+    // --------------------------------------------------------
+    // SETTINGS
+    // --------------------------------------------------------
 
-    let basePosition = null;
+    let fireBase = null;
 
-    let x = 0;
-    let y = 0;
-    let z = 0;
+    let fireX = 0;
+    let fireY = 0;
+    let fireZ = -20;
 
-    let scale = 3;
+    let fireSize = 3;
+    let fireIntensity = 6;
 
-    // --------------------------------------------------
+    let fireObjects = [];
+
+    let ui = null;
+    let hidden = false;
+
+    let lastTextureUpdate = 0;
+
+
+    // --------------------------------------------------------
     // WAIT FOR GEOFS
-    // --------------------------------------------------
+    // --------------------------------------------------------
 
-    const timer = setInterval(() => {
+    const loader = setInterval(() => {
 
         if (
             window.geofs &&
@@ -36,63 +42,75 @@
             geofs.camera.cam
         ) {
 
-            clearInterval(timer);
+            clearInterval(loader);
+
+            createUI();
 
             console.log(
-                "[FIRE] GeoFS API detected!"
+                "[FIRE] Procedural fire loaded"
             );
-
-            start();
         }
 
     }, 500);
 
 
-    // --------------------------------------------------
-    // FIRE IMAGE
-    // --------------------------------------------------
+    // ========================================================
+    // PROCEDURAL FIRE TEXTURE
+    // ========================================================
 
-    function makeFire() {
+    function createFireTexture(seed) {
 
         const canvas =
             document.createElement("canvas");
 
-        canvas.width = 256;
-        canvas.height = 256;
+        canvas.width = 512;
+        canvas.height = 768;
 
         const ctx =
             canvas.getContext("2d");
 
-        // glow
+        ctx.clearRect(
+            0,
+            0,
+            canvas.width,
+            canvas.height
+        );
+
+
+        /*
+         * ----------------------------------------------------
+         * LARGE SOFT OUTER GLOW
+         * ----------------------------------------------------
+         */
 
         const glow =
             ctx.createRadialGradient(
-                128,
-                170,
-                5,
-                128,
-                170,
-                120
+                256,
+                570,
+                20,
+                256,
+                570,
+                300
             );
 
         glow.addColorStop(
             0,
-            "rgba(255,255,220,1)"
+            "rgba(255,170,20,.30)"
         );
 
         glow.addColorStop(
-            .2,
-            "rgba(255,180,20,.95)"
+            .3,
+            "rgba(255,70,0,.18)"
         );
 
         glow.addColorStop(
-            .5,
-            "rgba(255,50,0,.35)"
+            .7,
+            "rgba(170,20,0,.06)"
         );
 
         glow.addColorStop(
             1,
-            "rgba(255,0,0,0)"
+            "rgba(0,0,0,0)"
         );
 
         ctx.fillStyle = glow;
@@ -100,110 +118,399 @@
         ctx.fillRect(
             0,
             0,
-            256,
-            256
+            512,
+            768
         );
 
-        // outer flame
 
-        ctx.beginPath();
+        /*
+         * ----------------------------------------------------
+         * ORGANIC NOISE FIELD
+         *
+         * Instead of drawing circles or flame polygons,
+         * thousands of tiny overlapping translucent fields
+         * create an irregular silhouette.
+         * ----------------------------------------------------
+         */
 
-        ctx.moveTo(128,235);
-
-        ctx.bezierCurveTo(
-            60,215,
-            70,155,
-            105,120
+        const random = mulberry32(
+            seed
         );
 
-        ctx.bezierCurveTo(
-            90,90,
-            120,60,
-            135,20
-        );
 
-        ctx.bezierCurveTo(
-            165,75,
-            190,110,
-            160,145
-        );
+        for (
+            let i = 0;
+            i < 1800;
+            i++
+        ) {
 
-        ctx.bezierCurveTo(
-            205,180,
-            175,220,
-            128,235
-        );
+            const height =
+                Math.pow(
+                    random(),
+                    1.65
+                );
 
-        ctx.closePath();
 
-        const flame =
-            ctx.createLinearGradient(
+            /*
+             * Fire is narrow at the top and wide at
+             * the bottom.
+             */
+
+            const width =
+                30 +
+                height * 220;
+
+
+            let x =
+                256 +
+                (
+                    random() -
+                    .5
+                ) *
+                width;
+
+
+            let y =
+                690 -
+                height *
+                600;
+
+
+            /*
+             * Multiple sine distortions make the edge
+             * irregular instead of symmetrical.
+             */
+
+            x +=
+                Math.sin(
+                    y * .035 +
+                    seed
+                ) *
+                35 *
+                height;
+
+            x +=
+                Math.sin(
+                    y * .071 +
+                    seed * 2.3
+                ) *
+                18;
+
+            x +=
+                Math.sin(
+                    y * .013 +
+                    seed * 4.1
+                ) *
+                28 *
+                height;
+
+
+            const radius =
+                3 +
+                random() *
+                (
+                    8 +
+                    height * 28
+                );
+
+
+            const temperature =
+                random();
+
+
+            let r;
+            let g;
+            let b;
+            let alpha;
+
+
+            if (
+                temperature < .13
+            ) {
+
+                // White-hot core
+
+                r = 255;
+                g = 255;
+                b = 220;
+
+                alpha =
+                    .015 +
+                    random() * .075;
+
+            } else if (
+                temperature < .42
+            ) {
+
+                // Yellow
+
+                r = 255;
+                g = 215;
+                b = 45;
+
+                alpha =
+                    .012 +
+                    random() * .065;
+
+            } else if (
+                temperature < .78
+            ) {
+
+                // Orange
+
+                r = 255;
+                g = 75;
+                b = 5;
+
+                alpha =
+                    .01 +
+                    random() * .06;
+
+            } else {
+
+                // Deep red outer fire
+
+                r = 190;
+                g = 20;
+                b = 0;
+
+                alpha =
+                    .008 +
+                    random() * .045;
+            }
+
+
+            const gradient =
+                ctx.createRadialGradient(
+                    x,
+                    y,
+                    0,
+                    x,
+                    y,
+                    radius
+                );
+
+
+            gradient.addColorStop(
                 0,
-                20,
-                0,
-                235
+                `rgba(${r},${g},${b},${alpha})`
             );
 
-        flame.addColorStop(
-            0,
-            "#ffffff"
-        );
+            gradient.addColorStop(
+                .35,
+                `rgba(${r},${g},${b},${alpha * .65})`
+            );
 
-        flame.addColorStop(
-            .25,
-            "#ffe000"
-        );
+            gradient.addColorStop(
+                1,
+                `rgba(${r},${g},${b},0)`
+            );
 
-        flame.addColorStop(
-            .65,
-            "#ff5000"
-        );
 
-        flame.addColorStop(
-            1,
-            "#c00000"
-        );
+            ctx.fillStyle =
+                gradient;
 
-        ctx.fillStyle = flame;
 
-        ctx.fill();
+            ctx.beginPath();
 
-        // inner flame
+            ctx.arc(
+                x,
+                y,
+                radius,
+                0,
+                Math.PI * 2
+            );
 
-        ctx.beginPath();
+            ctx.fill();
+        }
 
-        ctx.moveTo(128,220);
 
-        ctx.bezierCurveTo(
-            95,205,
-            105,170,
-            120,145
-        );
+        /*
+         * ----------------------------------------------------
+         * WHITE-HOT CENTRAL REGION
+         * ----------------------------------------------------
+         */
 
-        ctx.bezierCurveTo(
-            112,125,
-            130,100,
-            136,75
-        );
+        for (
+            let i = 0;
+            i < 500;
+            i++
+        ) {
 
-        ctx.bezierCurveTo(
-            155,120,
-            160,145,
-            148,165
-        );
+            const x =
+                256 +
+                (
+                    random() -
+                    .5
+                ) *
+                150;
 
-        ctx.bezierCurveTo(
-            170,190,
-            150,210,
-            128,220
-        );
 
-        ctx.closePath();
+            const y =
+                620 -
+                random() *
+                250;
 
-        ctx.fillStyle =
-            "#fff176";
 
-        ctx.fill();
+            const radius =
+                4 +
+                random() *
+                25;
+
+
+            const g =
+                ctx.createRadialGradient(
+                    x,
+                    y,
+                    0,
+                    x,
+                    y,
+                    radius
+                );
+
+
+            g.addColorStop(
+                0,
+                "rgba(255,255,235,.16)"
+            );
+
+            g.addColorStop(
+                .3,
+                "rgba(255,240,120,.10)"
+            );
+
+            g.addColorStop(
+                .7,
+                "rgba(255,130,10,.04)"
+            );
+
+            g.addColorStop(
+                1,
+                "rgba(255,50,0,0)"
+            );
+
+
+            ctx.fillStyle = g;
+
+            ctx.beginPath();
+
+            ctx.arc(
+                x,
+                y,
+                radius,
+                0,
+                Math.PI * 2
+            );
+
+            ctx.fill();
+        }
+
+
+        /*
+         * ----------------------------------------------------
+         * RANDOM HOT TONGUES
+         * ----------------------------------------------------
+         *
+         * These are extremely soft and blurred so they don't
+         * look like cartoon flame shapes.
+         */
+
+        ctx.filter =
+            "blur(5px)";
+
+
+        for (
+            let i = 0;
+            i < 45;
+            i++
+        ) {
+
+            const x =
+                256 +
+                (
+                    random() -
+                    .5
+                ) *
+                170;
+
+
+            const startY =
+                610 -
+                random() *
+                160;
+
+
+            const length =
+                50 +
+                random() *
+                230;
+
+
+            const width =
+                8 +
+                random() *
+                20;
+
+
+            const gradient =
+                ctx.createLinearGradient(
+                    x,
+                    startY,
+                    x +
+                    (
+                        random() -
+                        .5
+                    ) *
+                    50,
+                    startY -
+                    length
+                );
+
+
+            gradient.addColorStop(
+                0,
+                "rgba(255,220,70,.08)"
+            );
+
+            gradient.addColorStop(
+                .35,
+                "rgba(255,90,0,.06)"
+            );
+
+            gradient.addColorStop(
+                1,
+                "rgba(255,20,0,0)"
+            );
+
+
+            ctx.fillStyle =
+                gradient;
+
+
+            ctx.beginPath();
+
+            ctx.ellipse(
+                x,
+                startY -
+                length / 2,
+                width,
+                length / 2,
+                (
+                    random() -
+                    .5
+                ) *
+                .5,
+                0,
+                Math.PI * 2
+            );
+
+            ctx.fill();
+        }
+
+
+        ctx.filter =
+            "none";
+
 
         return canvas.toDataURL(
             "image/png"
@@ -211,262 +518,1053 @@
     }
 
 
-    const FIRE_IMAGE =
-        makeFire();
+    // ========================================================
+    // RANDOM NUMBER GENERATOR
+    // ========================================================
+
+    function mulberry32(a) {
+
+        return function () {
+
+            let t =
+                a +=
+                0x6D2B79F5;
+
+            t =
+                Math.imul(
+                    t ^
+                    t >>> 15,
+                    t | 1
+                );
+
+            t ^=
+                t +
+                Math.imul(
+                    t ^
+                    t >>> 7,
+                    t | 61
+                );
+
+            return (
+                (
+                    t ^
+                    t >>> 14
+                ) >>> 0
+            ) /
+            4294967296;
+        };
+    }
 
 
-    // --------------------------------------------------
+    // ========================================================
+    // SMOKE
+    // ========================================================
+
+    function createSmokeTexture(
+        seed
+    ) {
+
+        const canvas =
+            document.createElement(
+                "canvas"
+            );
+
+        canvas.width = 512;
+        canvas.height = 512;
+
+        const ctx =
+            canvas.getContext(
+                "2d"
+            );
+
+        const random =
+            mulberry32(
+                seed
+            );
+
+
+        for (
+            let i = 0;
+            i < 500;
+            i++
+        ) {
+
+            const x =
+                256 +
+                (
+                    random() -
+                    .5
+                ) *
+                400;
+
+
+            const y =
+                256 +
+                (
+                    random() -
+                    .5
+                ) *
+                400;
+
+
+            const radius =
+                15 +
+                random() *
+                70;
+
+
+            const gray =
+                25 +
+                random() *
+                45;
+
+
+            const g =
+                ctx.createRadialGradient(
+                    x,
+                    y,
+                    0,
+                    x,
+                    y,
+                    radius
+                );
+
+
+            g.addColorStop(
+                0,
+                `rgba(${gray},${gray},${gray},.055)`
+            );
+
+            g.addColorStop(
+                .5,
+                `rgba(${gray},${gray},${gray},.025)`
+            );
+
+            g.addColorStop(
+                1,
+                "rgba(0,0,0,0)"
+            );
+
+
+            ctx.fillStyle = g;
+
+            ctx.beginPath();
+
+            ctx.arc(
+                x,
+                y,
+                radius,
+                0,
+                Math.PI * 2
+            );
+
+            ctx.fill();
+        }
+
+
+        return canvas.toDataURL(
+            "image/png"
+        );
+    }
+
+
+    // ========================================================
+    // EMBER
+    // ========================================================
+
+    function createEmberTexture() {
+
+        const canvas =
+            document.createElement(
+                "canvas"
+            );
+
+        canvas.width = 64;
+        canvas.height = 64;
+
+        const ctx =
+            canvas.getContext(
+                "2d"
+            );
+
+
+        const g =
+            ctx.createRadialGradient(
+                32,
+                32,
+                0,
+                32,
+                32,
+                32
+            );
+
+
+        g.addColorStop(
+            0,
+            "rgba(255,255,230,1)"
+        );
+
+        g.addColorStop(
+            .15,
+            "rgba(255,210,50,1)"
+        );
+
+        g.addColorStop(
+            .45,
+            "rgba(255,70,0,.7)"
+        );
+
+        g.addColorStop(
+            1,
+            "rgba(255,0,0,0)"
+        );
+
+
+        ctx.fillStyle = g;
+
+        ctx.fillRect(
+            0,
+            0,
+            64,
+            64
+        );
+
+
+        return canvas.toDataURL(
+            "image/png"
+        );
+    }
+
+
+    const EMBER_TEXTURE =
+        createEmberTexture();
+
+
+    // ========================================================
+    // CREATE BILLBOARD
+    // ========================================================
+
+    function createBillboard(
+        position,
+        image,
+        scale,
+        opacity
+    ) {
+
+        try {
+
+            return new geofs.api.billboard(
+                position,
+                image,
+                {
+
+                    collection:
+                        "translucent",
+
+                    scale:
+                        scale,
+
+                    opacity:
+                        opacity,
+
+                    geofsFixCameraRotation:
+                        true
+                }
+            );
+
+        } catch (e) {
+
+            console.error(
+                "[FIRE] Billboard error:",
+                e
+            );
+
+            return null;
+        }
+    }
+
+
+    // ========================================================
     // CREATE FIRE
-    // --------------------------------------------------
+    // ========================================================
 
     function createFire() {
 
         deleteFire();
 
-        /*
-         * IMPORTANT:
-         *
-         * getCameraLla requires
-         * geofs.camera.cam
-         */
 
-        const cameraPosition =
+        const camera =
             geofs.api.getCameraLla(
                 geofs.camera.cam
             );
 
-        if (!cameraPosition) {
 
-            status(
-                "Couldn't get camera position"
-            );
+        if (
+            !camera
+        ) {
 
-            console.error(
-                "[FIRE] Camera position failed"
+            setStatus(
+                "Could not get position"
             );
 
             return;
         }
 
-        console.log(
-            "[FIRE] Camera LLA:",
-            cameraPosition
-        );
 
+        fireBase = [
 
-        /*
-         * Put fire slightly in front
-         * of the aircraft/camera.
-         *
-         * LLA =
-         * latitude
-         * longitude
-         * altitude
-         */
+            camera[0],
+            camera[1],
+            camera[2]
 
-        basePosition = [
-            cameraPosition[0],
-            cameraPosition[1],
-            cameraPosition[2]
         ];
 
 
-        x = 0;
-        y = 0;
-        z = -20;
+        fireX = 0;
+        fireY = 0;
+        fireZ = -20;
 
 
-        document.getElementById(
-            "fire-x"
-        ).value = 0;
-
-        document.getElementById(
-            "fire-y"
-        ).value = 0;
-
-        document.getElementById(
-            "fire-z"
-        ).value = -20;
+        buildFire();
 
 
-        updateLabels();
-
-        updateFire();
-
-        status(
-            "🔥 FIRE CREATED"
-        );
-
-        console.log(
-            "[FIRE] Created at:",
-            basePosition
+        setStatus(
+            "🔥 Fire placed"
         );
     }
 
 
-    // --------------------------------------------------
-    // UPDATE FIRE
-    // --------------------------------------------------
+    // ========================================================
+    // POSITION CALCULATION
+    // ========================================================
 
-    function updateFire() {
+    function position(
+        x,
+        y,
+        z
+    ) {
 
-        if (!basePosition)
-            return;
-
-
-        /*
-         * Convert meters into
-         * approximate latitude/
-         * longitude offsets.
-         */
-
-        const latitude =
-            basePosition[0] +
-            y / 111320;
+        const lat =
+            fireBase[0] +
+            y /
+            111320;
 
 
-        const longitude =
-            basePosition[1] +
+        const lon =
+            fireBase[1] +
             x /
             (
                 111320 *
                 Math.cos(
-                    basePosition[0] *
+                    fireBase[0] *
                     Math.PI /
                     180
                 )
             );
 
 
-        const altitude =
-            basePosition[2] +
-            z;
+        return [
 
+            lat,
+            lon,
+            fireBase[2] + z
 
-        const location = [
-            latitude,
-            longitude,
-            altitude
         ];
+    }
 
 
-        // Create billboard
+    // ========================================================
+    // BUILD FIRE
+    // ========================================================
 
-        if (!fire) {
+    function buildFire() {
 
-            console.log(
-                "[FIRE] Creating billboard:",
-                location
+        deleteFire();
+
+
+        if (
+            !fireBase
+        )
+            return;
+
+
+        /*
+         * ----------------------------------------------------
+         * MAIN FIRE
+         * ----------------------------------------------------
+         *
+         * Only a few huge organic textures.
+         *
+         * This is what removes the "geometrical particle"
+         * appearance.
+         */
+
+        const mainCount =
+            7 +
+            Math.floor(
+                fireIntensity /
+                2
             );
 
-            try {
 
-                fire =
-                    new geofs.api.billboard(
-                        location,
-                        FIRE_IMAGE,
-                        {
-                            collection:
-                                "translucent",
+        for (
+            let i = 0;
+            i < mainCount;
+            i++
+        ) {
 
-                            scale:
-                                scale,
+            const texture =
+                createFireTexture(
+                    1000 +
+                    i *
+                    973
+            );
 
-                            opacity:
-                                1,
 
-                            geofsFixCameraRotation:
-                                true
-                        }
-                    );
+            const angle =
+                (
+                    i /
+                    mainCount
+                ) *
+                Math.PI *
+                2;
 
-                console.log(
-                    "[FIRE] BILLBOARD CREATED!",
-                    fire
+
+            const radius =
+                (
+                    i % 3
+                ) *
+                .8;
+
+
+            const x =
+                Math.cos(
+                    angle
+                ) *
+                radius;
+
+
+            const y =
+                Math.sin(
+                    angle
+                ) *
+                radius;
+
+
+            const z =
+                fireZ +
+                (
+                    i % 3
+                ) *
+                fireSize *
+                1.5;
+
+
+            const object =
+                createBillboard(
+
+                    position(
+                        fireX + x,
+                        fireY + y,
+                        z
+                    ),
+
+                    texture,
+
+                    fireSize *
+                    (
+                        2.2 +
+                        Math.random() *
+                        .8
+                    ),
+
+                    .65 +
+                    Math.random() *
+                    .25
+
                 );
 
-            } catch (error) {
 
-                console.error(
-                    "[FIRE] BILLBOARD ERROR:",
-                    error
-                );
+            if (
+                object
+            ) {
 
-                status(
-                    "Billboard error — press F12"
-                );
+                fireObjects.push({
 
-                return;
+                    object:
+
+                        object,
+
+                    type:
+                        "fire",
+
+                    x:
+                        x,
+
+                    y:
+                        y,
+
+                    z:
+                        z,
+
+                    scale:
+                        fireSize *
+                        (
+                            2.2 +
+                            Math.random() *
+                            .8
+                        ),
+
+                    phase:
+                        Math.random() *
+                        Math.PI *
+                        2,
+
+                    speed:
+                        .7 +
+                        Math.random() *
+                        1.3
+
+                });
             }
+        }
 
-        } else {
 
-            fire.setLocation(
-                location
+        // ----------------------------------------------------
+        // SMOKE
+        // ----------------------------------------------------
+
+        const smokeCount =
+            5 +
+            Math.floor(
+                fireIntensity /
+                2
             );
 
-            fire.setScale(
-                scale
-            );
+
+        for (
+            let i = 0;
+            i < smokeCount;
+            i++
+        ) {
+
+            const smoke =
+                createSmokeTexture(
+                    9000 +
+                    i *
+                    333
+                );
+
+
+            const object =
+                createBillboard(
+
+                    position(
+                        fireX,
+                        fireY,
+                        fireZ +
+                        8 +
+                        i *
+                        10
+                    ),
+
+                    smoke,
+
+                    fireSize *
+                    (
+                        3 +
+                        i *
+                        .6
+                    ),
+
+                    .20
+
+                );
+
+
+            if (
+                object
+            ) {
+
+                fireObjects.push({
+
+                    object:
+                        object,
+
+                    type:
+                        "smoke",
+
+                    phase:
+                        Math.random() *
+                        Math.PI *
+                        2,
+
+                    speed:
+                        .2 +
+                        Math.random() *
+                        .4,
+
+                    offset:
+                        i * 10,
+
+                    scale:
+                        fireSize *
+                        (
+                            3 +
+                            i * .6
+                        )
+
+                });
+            }
+        }
+
+
+        // ----------------------------------------------------
+        // EMBERS
+        // ----------------------------------------------------
+
+        for (
+            let i = 0;
+            i <
+            12 +
+            fireIntensity * 3;
+            i++
+        ) {
+
+            const object =
+                createBillboard(
+
+                    position(
+                        fireX,
+                        fireY,
+                        fireZ
+                    ),
+
+                    EMBER_TEXTURE,
+
+                    .08 +
+                    Math.random() *
+                    .15,
+
+                    .8
+
+                );
+
+
+            if (
+                object
+            ) {
+
+                fireObjects.push({
+
+                    object:
+                        object,
+
+                    type:
+                        "ember",
+
+                    phase:
+                        Math.random() *
+                        Math.PI *
+                        2,
+
+                    angle:
+                        Math.random() *
+                        Math.PI *
+                        2,
+
+                    distance:
+                        Math.random() *
+                        15,
+
+                    rise:
+                        5 +
+                        Math.random() *
+                        20
+
+                });
+            }
         }
     }
 
 
-    // --------------------------------------------------
+    // ========================================================
+    // ANIMATION
+    // ========================================================
+
+    function animate(
+        timestamp
+    ) {
+
+        const time =
+            timestamp /
+            1000;
+
+
+        fireObjects.forEach(
+            p => {
+
+                if (
+                    !p.object
+                )
+                    return;
+
+
+                try {
+
+                    // ----------------------------------------
+                    // MAIN FIRE
+                    // ----------------------------------------
+
+                    if (
+                        p.type ===
+                        "fire"
+                    ) {
+
+                        const wobbleX =
+                            Math.sin(
+                                time *
+                                p.speed *
+                                3 +
+                                p.phase
+                            ) *
+                            fireSize *
+                            2;
+
+
+                        const wobbleY =
+                            Math.cos(
+                                time *
+                                p.speed *
+                                2.7 +
+                                p.phase
+                            ) *
+                            fireSize *
+                            1.5;
+
+
+                        const rise =
+                            Math.sin(
+                                time *
+                                p.speed *
+                                2 +
+                                p.phase
+                            ) *
+                            fireSize *
+                            2;
+
+
+                        p.object.setLocation(
+
+                            position(
+
+                                fireX +
+                                p.x +
+                                wobbleX,
+
+                                fireY +
+                                p.y +
+                                wobbleY,
+
+                                p.z +
+                                rise
+
+                            )
+
+                        );
+
+
+                        /*
+                         * Very subtle scale breathing.
+                         */
+
+                        const scale =
+                            p.scale *
+                            (
+                                1 +
+                                Math.sin(
+                                    time *
+                                    p.speed *
+                                    5 +
+                                    p.phase
+                                ) *
+                                .10
+                            );
+
+
+                        p.object.setScale(
+                            scale
+                        );
+                    }
+
+
+                    // ----------------------------------------
+                    // SMOKE
+                    // ----------------------------------------
+
+                    if (
+                        p.type ===
+                        "smoke"
+                    ) {
+
+                        const x =
+                            Math.sin(
+                                time *
+                                p.speed +
+                                p.phase
+                            ) *
+                            (
+                                5 +
+                                p.offset
+                            );
+
+
+                        const y =
+                            Math.cos(
+                                time *
+                                p.speed *
+                                .8 +
+                                p.phase
+                            ) *
+                            (
+                                4 +
+                                p.offset
+                            );
+
+
+                        const z =
+                            fireZ +
+                            8 +
+                            p.offset +
+                            (
+                                (
+                                    time *
+                                    2
+                                ) %
+                                35
+                            );
+
+
+                        p.object.setLocation(
+
+                            position(
+                                fireX + x,
+                                fireY + y,
+                                z
+                            )
+
+                        );
+
+
+                        p.object.setScale(
+
+                            p.scale *
+                            (
+                                1 +
+                                p.offset /
+                                20
+                            )
+
+                        );
+                    }
+
+
+                    // ----------------------------------------
+                    // EMBERS
+                    // ----------------------------------------
+
+                    if (
+                        p.type ===
+                        "ember"
+                    ) {
+
+                        const rise =
+                            (
+                                time *
+                                5
+                            ) %
+                            p.rise;
+
+
+                        const distance =
+                            p.distance +
+                            rise *
+                            .5;
+
+
+                        const x =
+                            Math.cos(
+                                p.angle
+                            ) *
+                            distance;
+
+
+                        const y =
+                            Math.sin(
+                                p.angle
+                            ) *
+                            distance;
+
+
+                        const z =
+                            fireZ +
+                            rise;
+
+
+                        p.object.setLocation(
+
+                            position(
+                                fireX + x,
+                                fireY + y,
+                                z
+                            )
+
+                        );
+                    }
+
+                } catch (e) {}
+
+            }
+        );
+
+
+        /*
+         * Rebuild the fire textures periodically.
+         *
+         * This changes the silhouette itself rather than
+         * merely moving the sprites.
+         */
+
+        if (
+            timestamp -
+            lastTextureUpdate >
+            350
+        ) {
+
+            lastTextureUpdate =
+                timestamp;
+
+            regenerateFireTextures();
+        }
+
+
+        requestAnimationFrame(
+            animate
+        );
+    }
+
+
+    // ========================================================
+    // REGENERATE MAIN FIRE
+    // ========================================================
+
+    function regenerateFireTextures() {
+
+        const fire =
+            fireObjects.filter(
+                p =>
+                    p.type ===
+                    "fire"
+            );
+
+
+        fire.forEach(
+            (p, index) => {
+
+                try {
+
+                    const newTexture =
+                        createFireTexture(
+                            Math.floor(
+                                performance.now() /
+                                350
+                            ) *
+                            31 +
+                            index *
+                            719
+                        );
+
+
+                    /*
+                     * Replacing the image is used instead of
+                     * making the flame a fixed texture.
+                     */
+
+                    if (
+                        p.object &&
+                        p.object.setImage
+                    ) {
+
+                        p.object.setImage(
+                            newTexture
+                        );
+
+                    }
+
+                } catch (e) {}
+            }
+        );
+    }
+
+
+    // ========================================================
     // DELETE
-    // --------------------------------------------------
+    // ========================================================
 
     function deleteFire() {
 
-        if (!fire)
-            return;
+        fireObjects.forEach(
+            p => {
 
-        try {
+                try {
 
-            fire.destroy();
+                    if (
+                        p.object
+                    ) {
 
-        } catch (error) {
+                        p.object.destroy();
 
-            console.warn(
-                "[FIRE] Destroy error:",
-                error
-            );
-        }
+                    }
 
-        fire = null;
+                } catch (e) {}
+
+            }
+        );
+
+
+        fireObjects = [];
     }
 
 
-    // --------------------------------------------------
+    // ========================================================
     // UI
-    // --------------------------------------------------
+    // ========================================================
 
     function createUI() {
 
-        const panel =
-            document.createElement("div");
+        ui =
+            document.createElement(
+                "div"
+            );
 
-        panel.id =
-            "fire-gizmo";
+
+        ui.id =
+            "procedural-fire-ui";
 
 
-        panel.innerHTML = `
+        ui.innerHTML = `
 
-            <div class="title">
-                🔥 FIRE GIZMO
+            <div class="fire-title">
+                🔥 PROCEDURAL FIRE
             </div>
 
-            <button id="create">
-                🔥 CREATE FIRE
+            <button id="fire-create">
+                PLACE FIRE
             </button>
-
-            <div class="axis">
-                <b>POSITION</b>
-            </div>
 
             <label>
                 X
-                <span id="x-value">0</span> m
+                <span id="fire-x-value">0</span>
             </label>
 
             <input
@@ -475,12 +1573,11 @@
                 min="-1000"
                 max="1000"
                 value="0"
-                step="1"
             >
 
             <label>
                 Y
-                <span id="y-value">0</span> m
+                <span id="fire-y-value">0</span>
             </label>
 
             <input
@@ -489,12 +1586,11 @@
                 min="-1000"
                 max="1000"
                 value="0"
-                step="1"
             >
 
             <label>
                 Z
-                <span id="z-value">-20</span> m
+                <span id="fire-z-value">-20</span>
             </label>
 
             <input
@@ -503,131 +1599,206 @@
                 min="-500"
                 max="500"
                 value="-20"
-                step="1"
             >
 
-            <div class="axis">
-                <b>QUICK MOVE</b>
-            </div>
-
-            <div class="row">
-                <button id="left">← X</button>
-                <button id="right">X →</button>
-            </div>
-
-            <div class="row">
-                <button id="back">Y ↓</button>
-                <button id="forward">Y ↑</button>
-            </div>
-
-            <div class="row">
-                <button id="down">Z ↓</button>
-                <button id="up">Z ↑</button>
-            </div>
-
-            <div class="axis">
-                <b>SIZE</b>
-            </div>
+            <label>
+                SIZE
+                <span id="fire-size-value">3</span>
+            </label>
 
             <input
                 id="fire-size"
                 type="range"
-                min="1"
-                max="8"
-                value="3"
+                min=".5"
+                max="10"
                 step=".1"
+                value="3"
             >
 
-            <button id="reset">
-                ↩ RESET
+            <label>
+                INTENSITY
+                <span id="fire-intensity-value">6</span>
+            </label>
+
+            <input
+                id="fire-intensity"
+                type="range"
+                min="1"
+                max="10"
+                value="6"
+            >
+
+            <button id="fire-delete">
+                DELETE FIRE
             </button>
 
-            <button id="delete">
-                🗑 DELETE FIRE
-            </button>
+            <div class="fire-help">
+                Press H to hide/show this panel
+            </div>
 
-            <div id="status">
+            <div id="fire-status">
                 Ready
             </div>
         `;
 
 
         const style =
-            document.createElement("style");
+            document.createElement(
+                "style"
+            );
+
 
         style.textContent = `
 
-            #fire-gizmo {
-                position:fixed;
-                right:20px;
-                top:110px;
-                width:250px;
-                padding:15px;
-                background:rgba(10,10,12,.96);
-                color:white;
-                z-index:999999;
-                border:2px solid #ff6500;
-                border-radius:12px;
-                font-family:Arial;
-                box-shadow:0 8px 30px rgba(0,0,0,.7);
+            #procedural-fire-ui {
+
+                position: fixed;
+
+                right: 20px;
+                top: 120px;
+
+                width: 250px;
+
+                padding: 15px;
+
+                background:
+                    rgba(8,8,8,.94);
+
+                color: white;
+
+                z-index: 999999;
+
+                border:
+                    2px solid
+                    #ff641c;
+
+                border-radius:
+                    12px;
+
+                font-family:
+                    Arial, sans-serif;
+
+                box-shadow:
+                    0 8px 30px
+                    rgba(0,0,0,.75);
             }
 
-            #fire-gizmo .title {
-                font-size:20px;
-                font-weight:bold;
-                color:#ff8a3d;
-                margin-bottom:12px;
+
+            .fire-title {
+
+                color:
+                    #ff8438;
+
+                font-size:
+                    19px;
+
+                font-weight:
+                    bold;
+
+                margin-bottom:
+                    12px;
             }
 
-            #fire-gizmo .axis {
-                margin-top:12px;
-                margin-bottom:5px;
-                color:#ff9b55;
+
+            #procedural-fire-ui
+            button {
+
+                width:
+                    100%;
+
+                margin-top:
+                    7px;
+
+                padding:
+                    9px;
+
+                border:
+                    none;
+
+                border-radius:
+                    6px;
+
+                background:
+                    #292929;
+
+                color:
+                    white;
+
+                font-weight:
+                    bold;
+
+                cursor:
+                    pointer;
             }
 
-            #fire-gizmo label {
-                display:block;
-                margin-top:7px;
+
+            #procedural-fire-ui
+            button:hover {
+
+                background:
+                    #d94d10;
             }
 
-            #fire-gizmo label span {
-                float:right;
-                color:#ff9b55;
+
+            #procedural-fire-ui
+            input {
+
+                width:
+                    100%;
+
+                margin-bottom:
+                    5px;
             }
 
-            #fire-gizmo input {
-                width:100%;
+
+            #procedural-fire-ui
+            label {
+
+                display:
+                    block;
+
+                margin-top:
+                    8px;
             }
 
-            #fire-gizmo button {
-                width:100%;
-                margin-top:6px;
-                padding:8px;
-                border:0;
-                border-radius:6px;
-                background:#333;
-                color:white;
-                font-weight:bold;
-                cursor:pointer;
+
+            #procedural-fire-ui
+            label span {
+
+                float:
+                    right;
+
+                color:
+                    #ff9a60;
             }
 
-            #fire-gizmo button:hover {
-                background:#ff5a00;
+
+            .fire-help {
+
+                margin-top:
+                    12px;
+
+                font-size:
+                    11px;
+
+                color:
+                    #aaa;
+
+                text-align:
+                    center;
             }
 
-            #fire-gizmo .row {
-                display:flex;
-                gap:5px;
-            }
 
-            #fire-gizmo .row button {
-                width:50%;
-            }
+            #fire-status {
 
-            #status {
-                margin-top:10px;
-                color:#ffad70;
-                min-height:18px;
+                margin-top:
+                    9px;
+
+                color:
+                    #ff9a60;
+
+                text-align:
+                    center;
             }
         `;
 
@@ -637,225 +1808,252 @@
         );
 
         document.body.appendChild(
-            panel
+            ui
         );
 
 
-        // CREATE
+        // ----------------------------------------------------
+        // BUTTONS
+        // ----------------------------------------------------
 
         document.getElementById(
-            "create"
+            "fire-create"
         ).onclick =
             createFire;
 
 
+        document.getElementById(
+            "fire-delete"
+        ).onclick =
+            () => {
+
+                deleteFire();
+
+                setStatus(
+                    "Fire deleted"
+                );
+            };
+
+
+        // ----------------------------------------------------
         // X
+        // ----------------------------------------------------
 
         document.getElementById(
             "fire-x"
-        ).oninput = e => {
+        ).oninput =
+            e => {
 
-            x =
-                Number(e.target.value);
+                fireX =
+                    Number(
+                        e.target.value
+                    );
 
-            updateLabels();
-            updateFire();
-        };
+                updateLabels();
+            };
 
 
+        // ----------------------------------------------------
         // Y
+        // ----------------------------------------------------
 
         document.getElementById(
             "fire-y"
-        ).oninput = e => {
+        ).oninput =
+            e => {
 
-            y =
-                Number(e.target.value);
+                fireY =
+                    Number(
+                        e.target.value
+                    );
 
-            updateLabels();
-            updateFire();
-        };
+                updateLabels();
+            };
 
 
+        // ----------------------------------------------------
         // Z
+        // ----------------------------------------------------
 
         document.getElementById(
             "fire-z"
-        ).oninput = e => {
+        ).oninput =
+            e => {
 
-            z =
-                Number(e.target.value);
+                fireZ =
+                    Number(
+                        e.target.value
+                    );
 
-            updateLabels();
-            updateFire();
-        };
+                updateLabels();
+            };
 
 
+        // ----------------------------------------------------
         // SIZE
+        // ----------------------------------------------------
 
         document.getElementById(
             "fire-size"
-        ).oninput = e => {
+        ).oninput =
+            e => {
 
-            scale =
-                Number(e.target.value);
+                fireSize =
+                    Number(
+                        e.target.value
+                    );
 
-            if (fire)
-                fire.setScale(scale);
-        };
+                updateLabels();
+
+                if (
+                    fireBase
+                )
+                    buildFire();
+            };
 
 
-        // QUICK MOVEMENT
-
-        document.getElementById(
-            "left"
-        ).onclick = () => moveX(-10);
-
-        document.getElementById(
-            "right"
-        ).onclick = () => moveX(10);
-
-        document.getElementById(
-            "back"
-        ).onclick = () => moveY(-10);
+        // ----------------------------------------------------
+        // INTENSITY
+        // ----------------------------------------------------
 
         document.getElementById(
-            "forward"
-        ).onclick = () => moveY(10);
+            "fire-intensity"
+        ).oninput =
+            e => {
 
-        document.getElementById(
-            "down"
-        ).onclick = () => moveZ(-10);
+                fireIntensity =
+                    Number(
+                        e.target.value
+                    );
 
-        document.getElementById(
-            "up"
-        ).onclick = () => moveZ(10);
+                updateLabels();
 
-
-        // RESET
-
-        document.getElementById(
-            "reset"
-        ).onclick = () => {
-
-            x = 0;
-            y = 0;
-            z = -20;
-
-            updateControls();
-
-            updateFire();
-        };
+                if (
+                    fireBase
+                )
+                    buildFire();
+            };
 
 
-        // DELETE
+        // ----------------------------------------------------
+        // H = HIDE UI
+        // ----------------------------------------------------
 
-        document.getElementById(
-            "delete"
-        ).onclick = () => {
+        document.addEventListener(
+            "keydown",
+            event => {
 
-            deleteFire();
+                /*
+                 * Don't activate while typing into
+                 * an input.
+                 */
 
-            status(
-                "Fire deleted"
-            );
-        };
+                if (
+                    event.target.tagName ===
+                    "INPUT" ||
+                    event.target.tagName ===
+                    "TEXTAREA"
+                )
+                    return;
+
+
+                if (
+                    event.key.toLowerCase() ===
+                    "h"
+                ) {
+
+                    hidden =
+                        !hidden;
+
+
+                    ui.style.display =
+                        hidden
+                            ? "none"
+                            : "block";
+                }
+            }
+        );
+
+
+        requestAnimationFrame(
+            animate
+        );
     }
 
 
-    // --------------------------------------------------
-    // MOVEMENT
-    // --------------------------------------------------
-
-    function moveX(amount) {
-
-        x += amount;
-
-        updateControls();
-        updateFire();
-    }
-
-
-    function moveY(amount) {
-
-        y += amount;
-
-        updateControls();
-        updateFire();
-    }
-
-
-    function moveZ(amount) {
-
-        z += amount;
-
-        updateControls();
-        updateFire();
-    }
-
-
-    function updateControls() {
-
-        document.getElementById(
-            "fire-x"
-        ).value = x;
-
-        document.getElementById(
-            "fire-y"
-        ).value = y;
-
-        document.getElementById(
-            "fire-z"
-        ).value = z;
-
-        updateLabels();
-    }
-
+    // ========================================================
+    // UPDATE UI VALUES
+    // ========================================================
 
     function updateLabels() {
 
-        document.getElementById(
-            "x-value"
-        ).textContent = x;
-
-        document.getElementById(
-            "y-value"
-        ).textContent = y;
-
-        document.getElementById(
-            "z-value"
-        ).textContent = z;
-    }
-
-
-    // --------------------------------------------------
-    // STATUS
-    // --------------------------------------------------
-
-    function status(text) {
-
-        const element =
+        const x =
             document.getElementById(
-                "status"
+                "fire-x-value"
             );
 
-        if (element)
-            element.textContent =
-                text;
+        const y =
+            document.getElementById(
+                "fire-y-value"
+            );
+
+        const z =
+            document.getElementById(
+                "fire-z-value"
+            );
+
+        const s =
+            document.getElementById(
+                "fire-size-value"
+            );
+
+        const i =
+            document.getElementById(
+                "fire-intensity-value"
+            );
+
+
+        if (x)
+            x.textContent =
+                fireX;
+
+        if (y)
+            y.textContent =
+                fireY;
+
+        if (z)
+            z.textContent =
+                fireZ;
+
+        if (s)
+            s.textContent =
+                fireSize;
+
+        if (i)
+            i.textContent =
+                fireIntensity;
     }
 
 
-    // --------------------------------------------------
-    // START
-    // --------------------------------------------------
+    // ========================================================
+    // STATUS
+    // ========================================================
 
-    function start() {
+    function setStatus(
+        text
+    ) {
 
-        createUI();
+        const status =
+            document.getElementById(
+                "fire-status"
+            );
 
-        console.log(
-            "[FIRE] Fire Gizmo ready."
-        );
+
+        if (
+            status
+        )
+            status.textContent =
+                text;
     }
 
 })();
