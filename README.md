@@ -1,4 +1,4 @@
-GeoFS Realistic Fires
+## GeoFS Realistic Fires
 
 A GeoFS addon that lets you spawn realistic fires both on aircraft and the ground!!
 
@@ -13,7 +13,7 @@ Remove the last fire
 Clear all fires
 Can spawn fire on airliners (on the wings, fuselage, engines, ect.)
 
-Installation
+## Installation
 
 1. Install Tampermonkey
 2. Create a new userscript.
@@ -24,34 +24,34 @@ Installation
 
 Or just simply copy the contents of `geofs-realistic-fires.user.js`, and paste it in your consle
 
-How to Use
+## How to Use
 
 After loading GeoFS, you will see a panel called:
 
 **🔥 Realistic Fires*
 
-Place a fire
+## Place a fire
 
 1. Click **🔥 Place Fire**.
 2. Click anywhere on the GeoFS map.
 3. A fire and smoke column will appear at that location.
 
-Change the location
+## Change the location
 Use the slider to choose between:
 
 The position
 The size
 The intensity
 
-Remove a fire
+## Remove a fire
 
 Click **Remove Last** to remove the most recently created fire.
 
-Remove everything
+## Remove everything
 
 Click **Clear All Fires** to remove every fire currently spawned.
 
-Project Structure
+##  Project Structure
 
 ```text
 GeoFS-Realistic-Fires/
@@ -61,7 +61,7 @@ GeoFS-Realistic-Fires/
 └── LICENSE
 ```
 
-Notes
+## Notes
 
 This addon creates the fire effects locally in your browser using the GeoFS/Cesium scene.
 
